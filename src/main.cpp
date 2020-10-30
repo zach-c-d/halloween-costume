@@ -1,88 +1,118 @@
 #include <FastLED.h>
 
-#define LED_PIN 16
+FASTLED_USING_NAMESPACE
 
-// Information about the LED strip itself
-#define NUM_LEDS 30
-#define CHIPSET WS2811
+// FastLED "100-lines-of-code" demo reel, showing just a few
+// of the kinds of animation patterns you can quickly and easily
+// compose using FastLED.
+//
+// This example also shows one easy way to define multiple
+// animations patterns and have them automatically rotate.
+//
+// -Mark Kriegsman, December 2014
+
+#if defined(FASTLED_VERSION) && (FASTLED_VERSION < 3001000)
+#warning "Requires FastLED 3.1 or later; check github for latest code."
+#endif
+
+#define DATA_PIN D8
+//#define CLK_PIN   4
+#define LED_TYPE WS2812
 #define COLOR_ORDER GRB
+#define NUM_LEDS 30
 CRGB leds[NUM_LEDS];
 
-#define BRIGHTNESS 128
+#define BRIGHTNESS 96
+#define FRAMES_PER_SECOND 120
 
-// FastLED v2.1 provides two color-management controls:
-//   (1) color correction settings for each LED strip, and
-//   (2) master control of the overall output 'color temperature'
-//
-// THIS EXAMPLE demonstrates the second, "color temperature" control.
-// It shows a simple rainbow animation first with one temperature profile,
-// and a few seconds later, with a different temperature profile.
-//
-// The first pixel of the strip will show the color temperature.
-//
-// HELPFUL HINTS for "seeing" the effect in this demo:
-// * Don't look directly at the LED pixels.  Shine the LEDs aganst
-//   a white wall, table, or piece of paper, and look at the reflected light.
-//
-// * If you watch it for a bit, and then walk away, and then come back
-//   to it, you'll probably be able to "see" whether it's currently using
-//   the 'redder' or the 'bluer' temperature profile, even not counting
-//   the lowest 'indicator' pixel.
-//
-//
-// FastLED provides these pre-conigured incandescent color profiles:
-//     Candle, Tungsten40W, Tungsten100W, Halogen, CarbonArc,
-//     HighNoonSun, DirectSunlight, OvercastSky, ClearBlueSky,
-// FastLED provides these pre-configured gaseous-light color profiles:
-//     WarmFluorescent, StandardFluorescent, CoolWhiteFluorescent,
-//     FullSpectrumFluorescent, GrowLightFluorescent, BlackLightFluorescent,
-//     MercuryVapor, SodiumVapor, MetalHalide, HighPressureSodium,
-// FastLED also provides an "Uncorrected temperature" profile
-//    UncorrectedTemperature;
 
-#define TEMPERATURE_1 Tungsten100W
-#define TEMPERATURE_2 OvercastSky
 
-// How many seconds to show each temperature before switching
-#define DISPLAYTIME 20
-// How many seconds to show black between switches
-#define BLACKTIME 3
 
-void loop()
+
+uint8_t gCurrentPatternNumber = 0; // Index number of which pattern is current
+uint8_t gHue = 0;                  // rotating "base color" used by many of the patterns
+
+
+
+#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
+
+
+void bpm()
 {
-  // draw a generic, no-name rainbow
-  static uint8_t starthue = 0;
-  fill_rainbow(leds + 5, NUM_LEDS - 5, --starthue, 20);
-
-  // Choose which 'color temperature' profile to enable.
-  uint8_t secs = (millis() / 1000) % (DISPLAYTIME * 2);
-  if (secs < DISPLAYTIME)
-  {
-    FastLED.setTemperature(TEMPERATURE_1); // first temperature
-    leds[0] = TEMPERATURE_1;               // show indicator pixel
+  // colored stripes pulsing at a defined Beats-Per-Minute (BPM)
+  uint8_t BeatsPerMinute = 62;
+  CRGBPalette16 palette = PartyColors_p;
+  uint8_t beat = beatsin8(BeatsPerMinute, 64, 255);
+  for (int i = 0; i < NUM_LEDS; i++)
+  { //9948
+    leds[i] = ColorFromPalette(palette, gHue + (i * 2), beat - gHue + (i * 10));
   }
-  else
-  {
-    FastLED.setTemperature(TEMPERATURE_2); // second temperature
-    leds[0] = TEMPERATURE_2;               // show indicator pixel
-  }
-
-  // Black out the LEDs for a few secnds between color changes
-  // to let the eyes and brains adjust
-  if ((secs % DISPLAYTIME) < BLACKTIME)
-  {
-    memset8(leds, 0, NUM_LEDS * sizeof(CRGB));
-  }
-
-  FastLED.show();
-  FastLED.delay(8);
+}
+void sinelon()
+{
+  // a colored dot sweeping back and forth, with fading trails
+  fadeToBlackBy(leds, NUM_LEDS, 20);
+  int pos = beatsin16(13, 0, NUM_LEDS - 1);
+  leds[pos] += CHSV(gHue, 255, 192);
 }
 
+
+void juggle()
+{
+  // eight colored dots, weaving in and out of sync with each other
+  fadeToBlackBy(leds, NUM_LEDS, 20);
+  byte dothue = 0;
+  for (int i = 0; i < 8; i++)
+  {
+    leds[beatsin16(i + 7, 0, NUM_LEDS - 1)] |= CHSV(dothue, 200, 255);
+    dothue += 32;
+  }
+}
+
+void confetti()
+{
+  // random colored speckles that blink in and fade smoothly
+  fadeToBlackBy(leds, NUM_LEDS, 10);
+  int pos = random16(NUM_LEDS);
+  leds[pos] += CHSV(gHue + random8(64), 200, 255);
+}
+
+
+void rainbow()
+{
+  // FastLED's built-in rainbow generator
+  fill_rainbow(leds, NUM_LEDS, gHue, 7);
+}
+// List of patterns to cycle through.  Each is defined as a separate function below.
+typedef void (*SimplePatternList[])();
+SimplePatternList gPatterns = {rainbow};
+void nextPattern()
+{
+  // add one to the current pattern number, and wrap around at the end
+  gCurrentPatternNumber = (gCurrentPatternNumber + 1) % ARRAY_SIZE(gPatterns);
+}
 void setup()
 {
-  delay(3000); // power-up safety delay
-  // It's important to set the color correction for your LED strip here,
-  // so that colors can be more accurately rendered through the 'temperature' profiles
-  FastLED.addLeds<CHIPSET, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalSMD5050);
+  delay(3000); // 3 second delay for recovery
+
+  // tell FastLED about the LED strip configuration
+  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+  //FastLED.addLeds<LED_TYPE,DATA_PIN,CLK_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+
+  // set master brightness control
   FastLED.setBrightness(BRIGHTNESS);
+}
+void loop()
+{
+  // Call the current pattern function once, updating the 'leds' array
+  gPatterns[gCurrentPatternNumber]();
+
+  // send the 'leds' array out to the actual LED strip
+  FastLED.show();
+  // insert a delay to keep the framerate modest
+  FastLED.delay(1000 / FRAMES_PER_SECOND);
+
+  // do some periodic updates
+  EVERY_N_MILLISECONDS(20) { gHue++; }   // slowly cycle the "base color" through the rainbow
+  EVERY_N_SECONDS(10) { nextPattern(); } // change patterns periodically
 }
